@@ -1,0 +1,40 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Package Lambda functions
+        run: |
+          cd terraform
+          cp ../lambdas/ingestion/index.py index.py && zip ingestion.zip index.py && rm index.py
+          cp ../lambdas/retrieval/index.py index.py && zip retrieval.zip index.py && rm index.py
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        run: terraform -chdir=terraform init
+
+      - name: Terraform Apply
+        run: terraform -chdir=terraform apply -auto-approve
+
+      - name: Upload frontend to S3
+        run: |
+          aws s3 cp frontend/index.html s3://stock-watchlist-frontend-28aaae23/index.html --content-type "text/html"
