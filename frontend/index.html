@@ -38,7 +38,7 @@
     }
     .refresh-dot.inactive { background: #475569; animation: none; }
 
-    /* ── Watchlist Grid ── */
+    /* Watchlist cards */
     .watchlist-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -79,14 +79,12 @@
     .card-meta-item span { display: block; color: #94a3b8; font-weight: 600; }
     .card-skeleton { height: 100px; display: flex; align-items: center; justify-content: center; color: #475569; font-size: 0.8rem; }
 
-    /* ── Section headers ── */
     .section-header {
       display: flex; align-items: center; justify-content: space-between;
       margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;
     }
     .section-title { font-size: 0.75rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; }
 
-    /* ── Controls ── */
     .controls { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
     .controls label { font-size: 0.82rem; color: #64748b; }
     input[type="date"] {
@@ -101,7 +99,6 @@
     .btn-toggle { background: #1e293b; color: #94a3b8; border-color: #334155; }
     .btn-toggle:hover, .btn-toggle.active { border-color: #60a5fa; color: #60a5fa; }
 
-    /* ── Lookup result card ── */
     .result-card { background: #1e293b; border-radius: 12px; padding: 1.1rem 1.4rem; margin-bottom: 1.25rem; border-left: 4px solid #334155; display: none; }
     .result-card.gain { border-left-color: #34d399; }
     .result-card.loss { border-left-color: #f87171; }
@@ -113,7 +110,7 @@
     .result-card .r-change { font-size: 1rem; font-weight: 700; margin-top: 0.2rem; }
     .no-data-msg { background: #1e293b; border-radius: 12px; padding: 1rem 1.4rem; margin-bottom: 1.25rem; color: #64748b; font-size: 0.85rem; display: none; }
 
-    /* ── History table ── */
+    /* History Table */
     .history-section.visible { display: block; }
     table { width: 100%; border-collapse: collapse; background: #1e293b; border-radius: 12px; overflow: hidden; }
     thead tr { background: #334155; }
