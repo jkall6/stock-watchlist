@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stock Watchlist — Top Movers</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 0;
+    }
+
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 1rem;
+    }
+
+    h1 { font-size: 1.8rem; font-weight: 700; margin-bottom: 0.25rem; }
+    .subtitle { color: #94a3b8; font-size: 0.85rem; margin-bottom: 0.5rem; }
+    .refresh-info {
+      font-size: 0.75rem;
+      color: #475569;
+      margin-bottom: 1.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .refresh-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: #34d399;
+      animation: pulse 2s infinite;
+    }
+    .refresh-dot.inactive { background: #475569; animation: none; }
+
+    /* ── Watchlist Grid ── */
+    .watchlist-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 0.75rem;
+      margin-bottom: 2rem;
+    }
+    .stock-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 1rem 1.1rem;
+      transition: border-color 0.2s, transform 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+    .stock-card.top-mover { border-color: #f0b429; background: #1c2a1a; }
+    .stock-card.top-mover::before {
+      content: 'HIGHEST CHANGE';
+      position: absolute; top: 0; right: 0;
+      background: #f0b429; color: #000;
+      font-size: 0.55rem; font-weight: 800;
+      letter-spacing: 0.06em; padding: 3px 8px;
+      border-bottom-left-radius: 8px;
+    }
+    .stock-card.gain { border-left: 3px solid #34d399; }
+    .stock-card.loss { border-left: 3px solid #f87171; }
+
+    .card-ticker { font-size: 1.1rem; font-weight: 700; letter-spacing: 0.04em; margin-bottom: 0.15rem; }
+    .card-session { font-size: 0.62rem; color: #475569; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.4rem; }
+    .card-price { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.15rem; }
+    .card-price.gain { color: #34d399; }
+    .card-price.loss { color: #f87171; }
+    .card-change { font-size: 0.82rem; font-weight: 600; margin-bottom: 0.6rem; }
+    .card-change.gain { color: #34d399; }
+    .card-change.loss { color: #f87171; }
+    .card-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem; }
+    .card-meta-item { font-size: 0.7rem; color: #64748b; }
+    .card-meta-item span { display: block; color: #94a3b8; font-weight: 600; }
+    .card-skeleton { height: 100px; display: flex; align-items: center; justify-content: center; color: #475569; font-size: 0.8rem; }
+
+    /* ── Section headers ── */
+    .section-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;
+    }
+    .section-title { font-size: 0.75rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; }
+
+    /* ── Controls ── */
+    .controls { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+    .controls label { font-size: 0.82rem; color: #64748b; }
+    input[type="date"] {
+      background: #1e293b; border: 1px solid #334155; border-radius: 8px;
+      color: #e2e8f0; font-size: 0.82rem; padding: 5px 9px;
+      outline: none; cursor: pointer; color-scheme: dark;
+    }
+    input[type="date"]:focus { border-color: #60a5fa; }
+    .btn { padding: 5px 12px; border-radius: 8px; font-size: 0.82rem; font-weight: 600; cursor: pointer; border: 1px solid transparent; transition: all 0.15s; }
+    .btn-primary { background: #3b82f6; color: #fff; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-toggle { background: #1e293b; color: #94a3b8; border-color: #334155; }
+    .btn-toggle:hover, .btn-toggle.active { border-color: #60a5fa; color: #60a5fa; }
+
+    /* ── Lookup result card ── */
+    .result-card { background: #1e293b; border-radius: 12px; padding: 1.1rem 1.4rem; margin-bottom: 1.25rem; border-left: 4px solid #334155; display: none; }
+    .result-card.gain { border-left-color: #34d399; }
+    .result-card.loss { border-left-color: #f87171; }
+    .result-card .card-date { font-size: 0.7rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.3rem; }
+    .result-card .r-ticker { font-size: 1.8rem; font-weight: 700; margin-bottom: 0.2rem; }
+    .result-card .r-ticker.gain { color: #34d399; }
+    .result-card .r-ticker.loss { color: #f87171; }
+    .result-card .r-meta { font-size: 0.82rem; color: #94a3b8; }
+    .result-card .r-change { font-size: 1rem; font-weight: 700; margin-top: 0.2rem; }
+    .no-data-msg { background: #1e293b; border-radius: 12px; padding: 1rem 1.4rem; margin-bottom: 1.25rem; color: #64748b; font-size: 0.85rem; display: none; }
+
+    /* ── History table ── */
+    .history-section.visible { display: block; }
+    table { width: 100%; border-collapse: collapse; background: #1e293b; border-radius: 12px; overflow: hidden; }
+    thead tr { background: #334155; }
+    th { text-align: left; padding: 10px 14px; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: #94a3b8; font-weight: 600; }
+    td { padding: 12px 14px; border-top: 1px solid #0f172a; font-size: 0.85rem; }
+    tbody tr { background: #0f172a; transition: background 0.15s; }
+    tbody tr:hover { background: #1e293b; }
+    .ticker-cell { font-weight: 700; font-size: 0.95rem; }
+    .badge { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 0.8rem; font-weight: 600; }
+    .badge.gain { background: #064e3b; color: #34d399; }
+    .badge.loss { background: #450a0a; color: #f87171; }
+    .tbl-msg { color: #475569; font-style: italic; font-size: 0.85rem; }
+    .tbl-err { color: #f87171; font-size: 0.85rem; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    @media (max-width: 500px) {
+      .container { padding: 0.5rem; }
+      .watchlist-grid { grid-template-columns: repeat(2, 1fr); }
+      th:nth-child(3), td:nth-child(3),
+      th:nth-child(4), td:nth-child(4) { display: none; }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>STOCK WATCHLIST</h1>
+  <p class="subtitle">AAPL · MSFT · GOOGL · AMZN · TSLA</p>
+  <div class="refresh-info">
+    <div class="refresh-dot" id="refreshDot"></div>
+    <span id="refreshLabel">Loading…</span>
+  </div>
+
+  <div class="section-header">
+    <div class="section-title">Watchlist</div>
+  </div>
+  <div class="watchlist-grid" id="watchlistGrid">
+    <div class="stock-card"><div class="card-skeleton">Loading…</div></div>
+    <div class="stock-card"><div class="card-skeleton">Loading…</div></div>
+    <div class="stock-card"><div class="card-skeleton">Loading…</div></div>
+    <div class="stock-card"><div class="card-skeleton">Loading…</div></div>
+    <div class="stock-card"><div class="card-skeleton">Loading…</div></div>
+  </div>
+
+  <div class="section-header">
+    <div class="section-title">Past 5 Trading Days</div>
+    <div class="controls">
+      <label for="datepicker">Look up:</label>
+      <input type="date" id="datepicker" />
+      <button class="btn btn-primary" id="lookupBtn">Look Up</button>
+    </div>
+  </div>
+
+  <div class="result-card" id="resultCard">
+    <div class="card-date" id="cardDate"></div>
+    <div class="r-ticker" id="cardTicker"></div>
+    <div class="r-meta" id="cardMeta"></div>
+    <div class="r-change" id="cardChange"></div>
+  </div>
+  <div class="no-data-msg" id="noDataMsg"></div>
+
+  <div class="history-section" id="historySection">
+    <table>
+      <thead>
+        <tr><th>Date</th><th>Ticker</th><th>Open</th><th>Close</th><th>% Change</th></tr>
+      </thead>
+      <tbody id="historyBody">
+        <tr><td colspan="5" class="tbl-msg">Loading history…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+<script>
+  // Configure
+  const HISTORY_API = "https://kcxmdk1mli.execute-api.us-east-1.amazonaws.com/prod/movers";
+  const WATCHLIST   = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA'];
+  const REFRESH_MS  = 5 * 60 * 1000;
+
+  let allRecords      = [];  // all records returned by Lambda
+  let refreshTimer   = null;
+
+  // Easy formatters and helpers
+  const fmt   = n => `$${parseFloat(n).toFixed(2)}`; // format as price
+  const fmtP  = n => { const v = parseFloat(n); return `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`; }; // format as percentage with sign
+  const cls   = n => parseFloat(n) >= 0 ? 'gain' : 'loss'; // CSS class based on positive/negative
+  const arrow = n => parseFloat(n) >= 0 ? '▲' : '▼'; // simple arrow symbol based on direction
+
+  // Market session logic based on US Eastern Time (handles DST)
+  function isDST(date) {
+    const jan = new Date(date.getFullYear(), 0, 1).getTimezoneOffset();
+    const jul = new Date(date.getFullYear(), 6, 1).getTimezoneOffset();
+    return date.getTimezoneOffset() < Math.max(jan, jul);
+  }
+
+  function getMarketSession() {
+    const now    = new Date();
+    const etOff  = isDST(now) ? -4 : -5;
+    const etDate = new Date(now.getTime() + etOff * 3600000);
+    const etDay  = etDate.getUTCDay();
+    const etTime = etDate.getUTCHours() + etDate.getUTCMinutes() / 60;
+    if (etDay === 0 || etDay === 6) return 'closed';
+    if (etTime >= 4   && etTime < 9.5)  return 'pre';
+    if (etTime >= 9.5 && etTime < 16)   return 'regular';
+    if (etTime >= 16  && etTime < 20)   return 'post';
+    return 'closed';
+  }
+ 
+  function sessionLabel(s) {
+    return { pre: 'Pre-Market', regular: 'Market Open', post: 'After Hours' }[s] || 'Market Closed';
+  }
+
+  // Look up top gains from Lambda with optional query params
+  async function fetchFromLambda(params = {}) {
+    const url = new URL(HISTORY_API);
+    Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+    const res = await fetch(url.toString());
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return {
+      movers:   Array.isArray(data) ? data : (data.movers || []),
+      selected: data.selected || null,
+      quotes:   data.quotes || null,
+      live:     data.live || false,
+    };
+  }
+
+  // Normalize different possible field names from Lambda into a consistent format
+  function normalizeMover(r) {
+    const ticker = (r.ticker || r.symbol || r.stock_ticker || r.Ticker || r.Symbol || '').toUpperCase();
+    const open   = parseFloat(r.open_price  || r.open  || r.Open  || 0);
+    const close  = parseFloat(r.close_price || r.close || r.Close || 0);
+    const pct    = parseFloat(r.percentage_change || r.pct_change || r.change_pct || r.PercentageChange || 0);
+    const date   = r.date || r.trading_date || r.Date || '';
+    return { ticker, open, close, pct, date, _raw: r };
+  }
+
+  // Build watchlist data from cached records, during market closed or if live data isn't available. Marks cards as stale if their date doesn't match the most recent date in cache.
+  function buildWatchlistFromCache() {
+    // Find the single most-recent date that has data (across any ticker)
+    const latestDate = allRecords.length ? normalizeMover(allRecords[0]).date : null;
+
+    return WATCHLIST.map(ticker => {
+      // Try exact match first, then case-insensitive
+      const records = allRecords.filter(m => {
+        const t = (m.ticker || m.symbol || m.stock_ticker || m.Ticker || m.Symbol || '').toUpperCase();
+        return t === ticker;
+      });
+      if (!records.length) return null;
+
+      const r    = records[0]; // sorted desc — newest first
+      const norm = normalizeMover(r);
+      const isStale = latestDate && norm.date && norm.date !== latestDate;
+
+      return {
+        ticker:    norm.ticker || ticker,
+        price:     norm.close,
+        open:      norm.open,
+        close:     norm.close,
+        changePct: norm.pct,
+        date:      norm.date,
+        isStale,
+        latestDate,
+      };
+    });
+  }
+
+  // build the watchlist cards based on provided data. Highlights the card with the highest absolute % change, and marks cards as stale if their date doesn't match the most recent date in cache.
+  function renderWatchlist(results) {
+    const valid    = results.filter(Boolean);
+    const topMover = valid.length
+      ? valid.reduce((a, b) => Math.abs(a.changePct) > Math.abs(b.changePct) ? a : b)
+      : null;
+
+    document.getElementById('watchlistGrid').innerHTML = results.map(r => {
+      if (!r) return `<div class="stock-card"><div class="card-skeleton">No data</div></div>`;
+      const c     = cls(r.changePct);
+      const isTop = topMover && r.ticker === topMover.ticker;
+      const staleTag = r.isStale
+        ? `<span style="color:#f0b429;font-size:0.6rem;font-weight:700;margin-left:4px;" title="Latest available: ${r.date}. Most recent date: ${r.latestDate}">⚠ ${r.date}</span>`
+        : `<span style="color:#475569;">${r.date}</span>`;
+      return `
+        <div class="stock-card ${c}${isTop ? ' top-mover' : ''}">
+          <div class="card-ticker">${r.ticker} ${staleTag}</div>
+          <div class="card-price ${c}">${fmt(r.price)}</div>
+          <div class="card-change ${c}">${arrow(r.changePct)} ${fmtP(r.changePct)}</div>
+          <div class="card-meta">
+            <div class="card-meta-item">Open<span>${r.open ? fmt(r.open) : '--'}</span></div>
+            <div class="card-meta-item">${r.date === 'Live' ? 'Current' : 'Close'}<span>${r.close ? fmt(r.close) : '—'}</span></div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  // Look up history data from Lambda and render both the watchlist and history table. If market is closed, uses cached data for cards and marks them as stale if their date doesn't match the most recent date in cache.
+  async function loadHistory() {
+    const dot   = document.getElementById('refreshDot');
+    const label = document.getElementById('refreshLabel');
+    const session = getMarketSession();
+
+    try {
+      const { movers, quotes, live } = await fetchFromLambda();
+      allRecords = movers.sort((a, b) => b.date.localeCompare(a.date));
+
+      // Use live quotes for cards if market is open, otherwise use stored data
+      if (live && quotes && quotes.length) {
+        renderWatchlist(quotes.map(q => q.error ? null : {
+          ticker:    q.ticker,
+          price:     q.price,
+          open:      q.open_price,
+          close:     q.close_price,
+          changePct: q.percentage_change,
+          date:      'Live',
+          isStale:   false,
+        }));
+      } else {
+        renderWatchlist(buildWatchlistFromCache());
+      }
+      renderHistory();
+
+      if (live) {
+        dot.classList.remove('inactive');
+        label.textContent = `Market open · Last updated ${new Date().toLocaleTimeString()} · refreshes every 5 min`;
+      } else if (getMarketSession() === 'closed') {
+        dot.classList.add('inactive');
+        const latestDate = allMovers[0]?.date ?? 'last session';
+        label.textContent = `Market closed — prices as of ${latestDate}`;
+        clearInterval(refreshTimer);
+        refreshTimer = null;
+      } else {
+        dot.classList.remove('inactive');
+        label.textContent = `${sessionLabel(getMarketSession())} · Last updated ${new Date().toLocaleTimeString()}`;
+      }
+
+      if (session === 'closed') {
+        dot.classList.add('inactive');
+        const latestDate = allRecords[0]?.date ?? 'last session';
+        label.textContent = `Market closed — prices as of ${latestDate}`;
+        clearInterval(refreshTimer);
+        refreshTimer = null;
+      } else {
+        dot.classList.remove('inactive');
+        label.textContent = `${sessionLabel(session)} · Last updated ${new Date().toLocaleTimeString()} · Refreshes every ${REFRESH_MS / 60000} min`;
+      }
+    } catch (err) {
+      dot.classList.add('inactive');
+      label.textContent = `Error loading data`;
+      document.getElementById('historyBody').innerHTML =
+        `<tr><td colspan="5" class="tbl-err">Failed to load: ${err.message}</td></tr>`;
+      document.getElementById('watchlistGrid').innerHTML =
+        WATCHLIST.map(() => `<div class="stock-card"><div class="card-skeleton">Error</div></div>`).join('');
+    }
+  }
+
+  function renderHistory() {
+    const tbody = document.getElementById('historyBody');
+    if (!allRecords.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="tbl-msg">No history available yet.</td></tr>';
+      return;
+    }
+
+    // Group by date and pick the top mover (highest abs % change) per day
+    const byDate = {};
+    allRecords.forEach(row => {
+      const { ticker, open, close, pct, date } = normalizeMover(row);
+      if (!byDate[date] || Math.abs(pct) > Math.abs(byDate[date].pct)) {
+        byDate[date] = { ticker, open, close, pct, date };
+      }
+    });
+
+    // Sort dates descending
+    const topMovers = Object.values(byDate).sort((a, b) => b.date.localeCompare(a.date));
+
+    tbody.innerHTML = topMovers.map(({ ticker, open, close, pct, date }) => {
+      const c = cls(pct);
+      return '<tr>'
+        + '<td>' + date + '</td>'
+        + '<td class="ticker-cell">' + ticker + '</td>'
+        + '<td>' + fmt(open)  + '</td>'
+        + '<td>' + fmt(close) + '</td>'
+        + '<td><span class="badge ' + c + '">' + fmtP(pct) + '</span></td>'
+        + '</tr>';
+    }).join('');
+  }
+
+  // Look up data for a specific date from Lambda, and render the result card. Checks cache first, then falls back to Lambda query if not found. Displays appropriate messages if no data is found or if there's an error.
+  async function lookupDate(dateStr) {
+    const card   = document.getElementById('resultCard');
+    const noData = document.getElementById('noDataMsg');
+    card.style.display   = 'none';
+    noData.style.display = 'none';
+
+    // Check cache first (use normalized date field)
+    const dateRecords = allRecords.filter(m => normalizeMover(m).date === dateStr);
+    let record = dateRecords.length
+      ? dateRecords.reduce((a, b) => Math.abs(parseFloat(a.percentage_change)) > Math.abs(parseFloat(b.percentage_change)) ? a : b)
+      : null;
+
+    if (!record) {
+      noData.textContent   = 'Fetching data…';
+      noData.style.display = 'block';
+      try {
+        const { movers, selected } = await fetchFromLambda({ date: dateStr });
+        if (movers.length) {
+          // Merge new records into cache
+          movers.forEach(m => { if (!allRecords.find(x => x.date === m.date && x.ticker === m.ticker)) allRecords.push(m); });
+          allRecords.sort((a, b) => b.date.localeCompare(a.date));
+          renderHistory();
+        }
+        record = selected || (movers.filter(m => m.date === dateStr).reduce((a, b) =>
+          Math.abs(parseFloat(a.percentage_change)) > Math.abs(parseFloat(b.percentage_change)) ? a : b
+        , null));
+      } catch (err) {
+        noData.textContent = `Error: ${err.message}`;
+        return;
+      }
+      noData.style.display = 'none';
+    }
+
+    if (!record) {
+      noData.textContent   = 'No data found for this date. It may be a weekend, holiday, or market was closed.';
+      noData.style.display = 'block';
+      return;
+    }
+
+    const norm = normalizeMover(record);
+    const c    = cls(norm.pct);
+    document.getElementById('cardDate').textContent   = norm.date;
+    document.getElementById('cardTicker').textContent = norm.ticker;
+    document.getElementById('cardTicker').className   = 'r-ticker ' + c;
+    document.getElementById('cardMeta').textContent   = 'Open ' + fmt(norm.open) + '  →  Close ' + fmt(norm.close);
+    document.getElementById('cardChange').innerHTML   = '<span class="' + c + '">' + arrow(norm.pct) + ' ' + fmtP(norm.pct) + '</span>';
+    card.className     = 'result-card ' + c;
+    card.style.display = 'block';
+  }
+
+  // Listen for lookup button clicks and Enter key on date input
+  document.getElementById('lookupBtn').addEventListener('click', () => {
+    const d = document.getElementById('datepicker').value;
+    if (d) lookupDate(d);
+  });
+
+  document.getElementById('datepicker').addEventListener('keydown', e => {
+    if (e.key === 'Enter') lookupDate(e.target.value);
+  });
+
+  // Init: set datepicker to yesterday's date (most recent trading day) and load history. Set up auto-refresh if market is open.
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  document.getElementById('datepicker').value = yesterday.toISOString().split('T')[0];
+
+  loadHistory();
+
+  const initialSession = getMarketSession();
+  if (initialSession !== 'closed') {
+    refreshTimer = setInterval(loadHistory, REFRESH_MS);
+  }
+</script>
+</div>
+</body>
+</html>
