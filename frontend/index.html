@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Tech Stock Watchlist - Highest Gains</title>
+  <title>Tech Stock Watchlist - Highest Change</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -59,7 +59,7 @@
     .stock-card:hover { border-color: #60a5fa; }
     .stock-card.top-mover { border-color: #f0b429; background: #1c2a1a; }
     .stock-card.top-mover::before {
-      content: 'HIGHEST CHANGE';
+      content: 'GREATEST CHANGE';
       position: absolute; top: 0; right: 0;
       background: #f0b429; color: #000;
       font-size: 0.55rem; font-weight: 800;
@@ -257,7 +257,7 @@
   </div>
 
   <div class="section-header">
-    <div class="section-title">Highest Gains: Past 5 Trading Days</div>
+    <div class="section-title">Greatest Changes: Past 5 Trading Days</div>
     <div class="controls">
       <label for="datepicker">Look up previous days:</label>
       <input type="date" id="datepicker" />
