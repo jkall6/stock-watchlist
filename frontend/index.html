@@ -125,7 +125,7 @@
     .tbl-msg { color: #475569; font-style: italic; font-size: 0.85rem; }
     .tbl-err { color: #f87171; font-size: 0.85rem; }
 
-    /* Chart */
+    /* ── Modal ── */
     .modal-overlay {
       display: none;
       position: fixed;
@@ -285,7 +285,7 @@
   </div>
 </div>
 
-<!-- Stock Detail Modal -->
+<!-- ── Stock Detail Modal ── -->
 <div class="modal-overlay" id="modalOverlay">
   <div class="modal">
     <button class="modal-close" id="modalClose">&times;</button>
@@ -530,7 +530,226 @@
     card.style.display = 'block';
   }
 
-  // Listen for lookup button clicks and Enter key on date input
+  // modal and chart logic
+  let modalChart    = null;
+  let activeTicker  = null;
+  let activeRange   = '1D';
+  let modalMomentum = null; // locked on open, doesn't change with range
+
+  const crosshairPlugin = {
+    id: 'crosshair',
+    afterDraw(chart) {
+      if (chart._hoverX === undefined) return;
+      const ctx = chart.ctx;
+      const yAxis = chart.scales.y;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(chart._hoverX, yAxis.top);
+      ctx.lineTo(chart._hoverX, yAxis.bottom);
+      ctx.strokeStyle = 'rgba(148,163,184,0.25)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.stroke();
+      ctx.restore();
+    }
+  };
+  Chart.register(crosshairPlugin);
+
+  async function openModal(ticker, cardDataEncoded) {
+    activeTicker = ticker;
+    activeRange  = '1D';
+    const cardData = JSON.parse(decodeURIComponent(cardDataEncoded));
+
+    document.getElementById('modalOverlay').classList.add('open');
+    document.querySelectorAll('.range-btn').forEach(b => b.classList.toggle('active', b.dataset.range === '1D'));
+
+    const c = cls(cardData.changePct);
+    document.getElementById('modalCompany').textContent      = COMPANIES[ticker] || ticker;
+    document.getElementById('modalTicker').textContent       = ticker;
+    document.getElementById('modalTicker').className         = 'modal-ticker ' + c;
+    document.getElementById('modalCurrentPrice').textContent = fmt(cardData.price);
+    document.getElementById('modalChange').textContent       = `${arrow(cardData.changePct)} ${fmtP(cardData.changePct)} today`;
+    document.getElementById('modalChange').className         = 'modal-change ' + c;
+    document.getElementById('modalMeta').textContent         = `Open ${fmt(cardData.open)}  ·  Close ${fmt(cardData.close)}`;
+
+    // Clear old momentum while loading
+    modalMomentum = null;
+    document.getElementById('momentumBadge').textContent = '';
+    document.getElementById('momentumSignalText').textContent = '';
+    document.getElementById('momentumDesc').textContent = '';
+    document.getElementById('momentumStats').innerHTML = '';
+    document.getElementById('momentumFill').style.width = '0%';
+
+    await loadChart(ticker, '1D', true);
+  }
+
+  async function loadChart(ticker, range, isFirstLoad) {
+    document.getElementById('chartLoading').style.display = 'flex';
+    document.getElementById('chartHoverPrice').innerHTML = '&nbsp;';
+    if (modalChart) { modalChart.destroy(); modalChart = null; }
+
+    try {
+      const data = await fetchFromLambda({ ticker, range });
+
+      // Lock momentum signal on first load only
+      if (isFirstLoad && data.momentum) {
+        modalMomentum = data.momentum;
+        renderMomentum(modalMomentum);
+      }
+
+      renderChart(data.candles || [], range);
+      renderStats(data.candles || [], range);
+    } catch (err) {
+      document.getElementById('chartLoading').textContent = 'Failed to load chart.';
+    }
+  }
+
+  function renderChart(candles, range) {
+    document.getElementById('chartLoading').style.display = 'none';
+    if (!candles.length) {
+      document.getElementById('chartLoading').textContent = 'No chart data available.';
+      document.getElementById('chartLoading').style.display = 'flex';
+      return;
+    }
+
+    const labels = candles.map(c => {
+      const d = new Date(c.t * 1000);
+      if (range === '1D') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      if (range === '5D') return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      if (range === '5Y') return d.toLocaleDateString([], { month: 'short', year: '2-digit' });
+      return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    });
+
+    const prices    = candles.map(c => c.c);
+    const isUp      = prices[prices.length - 1] >= prices[0];
+    const lineColor = isUp ? '#34d399' : '#f87171';
+    const fillColor = isUp ? 'rgba(52,211,153,0.07)' : 'rgba(248,113,113,0.07)';
+
+    const ctx = document.getElementById('modalChart').getContext('2d');
+    modalChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          data: prices,
+          borderColor: lineColor,
+          backgroundColor: fillColor,
+          borderWidth: 1.5,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          pointHoverBackgroundColor: lineColor,
+          pointHoverBorderColor: '#0f172a',
+          pointHoverBorderWidth: 2,
+          fill: true,
+          tension: 0.3,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 350 },
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1e293b',
+            borderColor: '#334155',
+            borderWidth: 1,
+            titleColor: '#64748b',
+            bodyColor: '#e2e8f0',
+            titleFont: { size: 10 },
+            bodyFont: { size: 13, weight: '700' },
+            padding: 8,
+            callbacks: { label: ctx => `$${ctx.parsed.y.toFixed(2)}` }
+          }
+        },
+        onHover: (event, elements, chart) => {
+          if (elements.length > 0) {
+            const idx   = elements[0].index;
+            const price = prices[idx];
+            const label = labels[idx];
+            const pct   = ((price - prices[0]) / prices[0] * 100);
+            const col   = pct >= 0 ? '#34d399' : '#f87171';
+            document.getElementById('chartHoverPrice').innerHTML =
+              `<span style="color:#e2e8f0;font-weight:700;">$${price.toFixed(2)}</span>` +
+              `<span style="color:${col};margin-left:0.5rem;">${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%</span>` +
+              `<span style="color:#475569;margin-left:0.5rem;">${label}</span>`;
+            chart._hoverX = event.x;
+          } else {
+            document.getElementById('chartHoverPrice').innerHTML = '&nbsp;';
+            chart._hoverX = undefined;
+          }
+          chart.draw();
+        },
+        scales: {
+          x: {
+            ticks: { color: '#334155', maxTicksLimit: 6, font: { size: 9 } },
+            grid: { color: '#111827' },
+            border: { color: '#1e293b' }
+          },
+          y: {
+            position: 'right',
+            ticks: { color: '#334155', callback: v => `$${v.toFixed(0)}`, font: { size: 9 } },
+            grid: { color: '#131f35' },
+            border: { color: '#1e293b' }
+          }
+        }
+      }
+    });
+  }
+
+  function renderStats(candles, range) {
+    if (!candles.length) { document.getElementById('statsRow').innerHTML = ''; return; }
+    const prices = candles.map(c => c.c);
+    const hi  = Math.max(...prices).toFixed(2);
+    const lo  = Math.min(...prices).toFixed(2);
+    const pct = ((prices[prices.length-1] - prices[0]) / prices[0] * 100).toFixed(2);
+    const isP = parseFloat(pct) >= 0;
+    document.getElementById('statsRow').innerHTML = `
+      <div class="stat-box"><div class="stat-label">${range} High</div><div class="stat-value">$${hi}</div></div>
+      <div class="stat-box"><div class="stat-label">${range} Low</div><div class="stat-value">$${lo}</div></div>
+      <div class="stat-box"><div class="stat-label">${range} Change</div><div class="stat-value ${isP ? 'gain' : 'loss'}">${isP ? '+' : ''}${pct}%</div></div>`;
+  }
+
+  function renderMomentum(m) {
+    if (!m || !m.signal) return;
+    const meterColors = { STRONG_UP:'#34d399', MILD_UP:'#86efac', NEUTRAL:'#94a3b8', MILD_DOWN:'#fca5a5', STRONG_DOWN:'#f87171' };
+    const meterPct    = { STRONG_UP: 90, MILD_UP: 65, NEUTRAL: 50, MILD_DOWN: 35, STRONG_DOWN: 10 };
+    document.getElementById('momentumBadge').textContent      = m.label || '';
+    document.getElementById('momentumBadge').className        = 'momentum-badge ' + m.signal;
+    document.getElementById('momentumSignalText').textContent = m.label || '';
+    document.getElementById('momentumSignalText').className   = 'momentum-signal-text ' + m.signal;
+    document.getElementById('momentumStats').innerHTML =
+      `<div class="momentum-stat">5-Day Change: <span>${m.pct_5day !== undefined ? (m.pct_5day >= 0 ? '+' : '') + m.pct_5day + '%' : '—'}</span></div>
+       <div class="momentum-stat">Up Days: <span>${m.up_days ?? '—'}/4</span></div>
+       <div class="momentum-stat">Down Days: <span>${m.down_days ?? '—'}/4</span></div>`;
+    document.getElementById('momentumDesc').textContent = m.description || '';
+    const fill = document.getElementById('momentumFill');
+    fill.style.width      = (meterPct[m.signal] || 50) + '%';
+    fill.style.background = meterColors[m.signal] || '#94a3b8';
+  }
+
+  function closeModal() {
+    document.getElementById('modalOverlay').classList.remove('open');
+    if (modalChart) { modalChart.destroy(); modalChart = null; }
+    activeTicker  = null;
+    modalMomentum = null;
+  }
+
+  document.getElementById('rangeToggles').addEventListener('click', async e => {
+    const btn = e.target.closest('.range-btn');
+    if (!btn || !activeTicker) return;
+    activeRange = btn.dataset.range;
+    document.querySelectorAll('.range-btn').forEach(b => b.classList.toggle('active', b === btn));
+    await loadChart(activeTicker, activeRange, false); // false = don't reload momentum
+  });
+
+  document.getElementById('modalClose').addEventListener('click', closeModal);
+  document.getElementById('modalOverlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('modalOverlay')) closeModal();
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
   document.getElementById('lookupBtn').addEventListener('click', () => {
     const d = document.getElementById('datepicker').value;
     if (d) lookupDate(d);
