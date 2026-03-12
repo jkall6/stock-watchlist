@@ -56,8 +56,13 @@ def fetch_finnhub_quote(ticker, finnhub_key):
                 'live':              True,
             }
     except Exception as e:
-        logger.error(f"Finnhub quote error for {ticker}: {str(e)}")
-        return None
+        print(f"CANDLE ERROR {ticker}: {type(e).__name__}: {str(e)}")
+        logger.error(f"Finnhub candle error for {ticker}: {str(e)}")
+        return []
+    
+    if data.get('s') != 'ok':
+        logger.warning(f"Candle data not ok for {ticker}: {data.get('s')} — full response: {data}")
+        return []
 
 
 def fetch_all_live_quotes(finnhub_key):
