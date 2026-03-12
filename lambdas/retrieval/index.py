@@ -104,23 +104,16 @@ def fetch_finnhub_candles(ticker, range_str, finnhub_key):
 
 
 def calculate_momentum(candles):
-    """
-    Simple short-term momentum signal based on last 5 closes.
-    Not investment advice — short-term indicator only.
-    """
     if len(candles) < 5:
         return {
-            'signal': 'INSUFFICIENT_DATA',
-            'label': 'Not enough data',
+            'signal':      'INSUFFICIENT_DATA',
+            'label':       'Not enough data',
             'description': 'Insufficient price history to calculate momentum.',
-            'disclaimer': 'This is a short-term momentum signal only. Not investment advice.'
         }
-    closes   = [c['c'] for c in candles[-5:]]
-    current  = closes[-1]
-    start    = closes[0]
-    pct_5    = ((current - start) / start * 100) if start else 0
-    up_days  = sum(1 for i in range(1, len(closes)) if closes[i] > closes[i-1])
-    dn_days  = len(closes) - 1 - up_days
+    closes  = [c['c'] for c in candles[-5:]]
+    pct_5   = ((closes[-1] - closes[0]) / closes[0] * 100) if closes[0] else 0
+    up_days = sum(1 for i in range(1, len(closes)) if closes[i] > closes[i-1])
+    dn_days = len(closes) - 1 - up_days
 
     if pct_5 > 3 and up_days >= 4:
         signal, label = 'STRONG_UP',   'Strong Upward Momentum'
@@ -145,7 +138,6 @@ def calculate_momentum(candles):
         'pct_5day':    round(pct_5, 2),
         'up_days':     up_days,
         'down_days':   dn_days,
-        'disclaimer':  'This is a short-term momentum signal only based on recent price action. It is not a prediction of future performance or investment advice.',
     }
 
 
