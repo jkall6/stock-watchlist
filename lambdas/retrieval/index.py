@@ -5,7 +5,7 @@ import os
 import urllib.request
 import time
 from datetime import date, timedelta, datetime
-from boto3.dynamodb.conditions import Key
+from boto3.dynamodb.conditions import Key, Attr
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -73,6 +73,31 @@ def fetch_all_live_quotes(finnhub_key):
         time.sleep(0.2)
     return quotes
 
+def get_candles_from_dynamo(table, ticker, range_str):
+    days_back = {'5D': 15, '1M': 45, '1Y': 400, '5Y': 1900}.get(range_str, 45)
+    max_points = {'5D': 5, '1M': 30, '1Y': 252, '5Y': 1260}.get(range_str, 30)
+    cutoff = str(date.today() - timedelta(days=days_back))
+    try:
+        response = table.scan(
+            FilterExpression=Attr('ticker').eq(ticker) & Attr('date').gte(cutoff)
+        )
+        items = response.get('Items', [])
+        items.sort(key=lambda x: x['date'])
+        candles = []
+        for item in items:
+            try:
+                d = datetime.strptime(item['date'], '%Y-%m-%d')
+                candles.append({
+                    't': int(d.timestamp()),
+                    'c': float(item['close_price']),
+                    'o': float(item['open_price']),
+                })
+            except Exception:
+                pass
+        return candles[-max_points:] if len(candles) > max_points else candles
+    except Exception as e:
+        logger.error(f"DynamoDB candle error for {ticker} {range_str}: {str(e)}")
+        return []
 
 def fetch_finnhub_candles(ticker, range_str, finnhub_key):
     now = int(datetime.utcnow().timestamp())
@@ -224,15 +249,13 @@ def lambda_handler(event, context):
     range_param  = params.get('range', '1M')
     if ticker_param:
         ticker   = ticker_param.upper()
-        candles  = fetch_finnhub_candles(ticker, range_param, finnhub_key)
+        candles  = get_candles_from_dynamo(table, ticker, range_param)
         momentum = calculate_momentum(candles)
-        quote    = fetch_finnhub_quote(ticker, finnhub_key)
         return build_response(200, {
             'ticker':   ticker,
             'range':    range_param,
             'candles':  candles,
             'momentum': momentum,
-            'quote':    quote,
         })
 
     # Date-specific data for watchlist table (e.g. ?date=2024-06-01). Checks cache first, then Massive if not found.

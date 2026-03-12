@@ -301,8 +301,7 @@
       </div>
     </div>
     <div class="range-toggles" id="rangeToggles">
-      <button class="range-btn active" data-range="1D">1D</button>
-      <button class="range-btn" data-range="5D">5D</button>
+      <button class="range-btn active" data-range="5D">5D</button>
       <button class="range-btn" data-range="1M">1M</button>
       <button class="range-btn" data-range="1Y">1Y</button>
       <button class="range-btn" data-range="5Y">5Y</button>
@@ -533,7 +532,7 @@
   // modal and chart logic
   let modalChart    = null;
   let activeTicker  = null;
-  let activeRange   = '1D';
+  let activeRange   = '5D';
   let modalMomentum = null; // locked on open, doesn't change with range
 
   const crosshairPlugin = {
@@ -557,11 +556,11 @@
 
   async function openModal(ticker, cardDataEncoded) {
     activeTicker = ticker;
-    activeRange  = '1D';
+    activeRange  = '5D';
     const cardData = JSON.parse(decodeURIComponent(cardDataEncoded));
 
     document.getElementById('modalOverlay').classList.add('open');
-    document.querySelectorAll('.range-btn').forEach(b => b.classList.toggle('active', b.dataset.range === '1D'));
+    document.querySelectorAll('.range-btn').forEach(b => b.classList.toggle('active', b.dataset.range === '5D'));
 
     const c = cls(cardData.changePct);
     document.getElementById('modalCompany').textContent      = COMPANIES[ticker] || ticker;
@@ -580,7 +579,7 @@
     document.getElementById('momentumStats').innerHTML = '';
     document.getElementById('momentumFill').style.width = '0%';
 
-    await loadChart(ticker, '1D', true);
+    await loadChart(ticker, '5D', true);
   }
 
   async function loadChart(ticker, range, isFirstLoad) {
