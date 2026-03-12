@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Tech Stock Watchlist - Highest Change</title>
+  <title>Tech Stock Watchlist - Highest Gains</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -21,7 +21,7 @@
       padding: 1rem;
     }
 
-    h1 { font-size: 3rem; font-weight: 700; margin-bottom: 0.25rem; }
+    h1 { font-size: 1.8rem; font-weight: 700; margin-bottom: 0.25rem; }
     .subtitle { color: #94a3b8; font-size: 0.85rem; margin-bottom: 0.5rem; }
     .refresh-info {
       font-size: 0.75rem;
@@ -59,7 +59,7 @@
     .stock-card:hover { border-color: #60a5fa; }
     .stock-card.top-mover { border-color: #f0b429; background: #1c2a1a; }
     .stock-card.top-mover::before {
-      content: 'GREATEST CHANGE';
+      content: 'HIGHEST CHANGE';
       position: absolute; top: 0; right: 0;
       background: #f0b429; color: #000;
       font-size: 0.55rem; font-weight: 800;
@@ -114,7 +114,14 @@
     /* History Table */
     table { width: 100%; border-collapse: collapse; background: #1e293b; border-radius: 12px; overflow: hidden; }
     thead tr { background: #334155; }
-    th { text-align: left; padding: 10px 14px; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: #94a3b8; font-weight: 600; }
+    th {
+      text-align: left; padding: 10px 14px; font-size: 0.72rem;
+      text-transform: uppercase; letter-spacing: 0.06em; color: #94a3b8; font-weight: 600;
+      cursor: pointer; user-select: none; white-space: nowrap;
+    }
+    th:hover { color: #e2e8f0; }
+    th.sort-asc::after  { content: ' ▲'; font-size: 0.6rem; }
+    th.sort-desc::after { content: ' ▼'; font-size: 0.6rem; }
     td { padding: 12px 14px; border-top: 1px solid #0f172a; font-size: 0.85rem; }
     tbody tr { background: #0f172a; transition: background 0.15s; }
     tbody tr:hover { background: #1e293b; }
@@ -124,6 +131,19 @@
     .badge.loss { background: #450a0a; color: #f87171; }
     .tbl-msg { color: #475569; font-style: italic; font-size: 0.85rem; }
     .tbl-err { color: #f87171; font-size: 0.85rem; }
+    .pagination {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-top: 0.75rem; flex-wrap: wrap; gap: 0.5rem;
+    }
+    .pagination-info { font-size: 0.72rem; color: #475569; }
+    .pagination-btns { display: flex; gap: 0.3rem; }
+    .page-btn {
+      padding: 4px 10px; border-radius: 6px; font-size: 0.72rem; font-weight: 600;
+      cursor: pointer; border: 1px solid #334155; background: transparent; color: #475569; transition: all 0.15s;
+    }
+    .page-btn:hover { color: #94a3b8; border-color: #475569; }
+    .page-btn.active { background: #334155; border-color: #475569; color: #e2e8f0; }
+    .page-btn:disabled { opacity: 0.3; cursor: default; }
 
     /* Modal */
     .modal-overlay {
@@ -238,7 +258,7 @@
 </head>
 <body>
 <div class="container">
-  <h1>Stock Watchlist</h1>
+  <h1>STOCK WATCHLIST</h1>
   <p class="subtitle">AAPL · MSFT · GOOGL · AMZN · TSLA</p>
   <div class="refresh-info">
     <div class="refresh-dot" id="refreshDot"></div>
@@ -246,7 +266,7 @@
   </div>
 
   <div class="section-header">
-    <div class="section-title">Watchlist (Click on a stock to view details)</div>
+    <div class="section-title">Watchlist</div>
   </div>
   <div class="watchlist-grid" id="watchlistGrid">
     <div class="stock-card"><div class="card-skeleton">Loading…</div></div>
@@ -257,7 +277,7 @@
   </div>
 
   <div class="section-header">
-    <div class="section-title">Greatest Changes: Past 5 Trading Days</div>
+    <div class="section-title">Daily Winners — Top Gainers</div>
     <div class="controls">
       <label for="datepicker">Look up previous days:</label>
       <input type="date" id="datepicker" />
@@ -276,13 +296,14 @@
   <div class="history-section" id="historySection">
     <table>
       <thead>
-        <tr><th>Date</th><th>Ticker</th><th>Open</th><th>Close</th><th>% Change</th></tr>
+        <tr><th data-col="date" class="sort-desc">Date</th><th data-col="ticker">Ticker</th><th data-col="open">Open</th><th data-col="close">Close</th><th data-col="pct">% Change</th></tr>
       </thead>
       <tbody id="historyBody">
         <tr><td colspan="5" class="tbl-msg">Loading history…</td></tr>
       </tbody>
     </table>
   </div>
+  <div class="pagination" id="pagination"></div>
 </div>
 
 <!-- Stock information in the modal-->
@@ -301,7 +322,8 @@
       </div>
     </div>
     <div class="range-toggles" id="rangeToggles">
-      <button class="range-btn active" data-range="5D">5D</button>
+      <button class="range-btn active" data-range="1D">1D</button>
+      <button class="range-btn" data-range="5D">5D</button>
       <button class="range-btn" data-range="1M">1M</button>
       <button class="range-btn" data-range="1Y">1Y</button>
       <button class="range-btn" data-range="5Y">5Y</button>
@@ -471,19 +493,108 @@
     }
   }
 
-  function renderHistory() {
-    const tbody = document.getElementById('historyBody');
-    if (!allRecords.length) { tbody.innerHTML = '<tr><td colspan="5" class="tbl-msg">No history available yet.</td></tr>'; return; }
+  // History state
+  let historyRows  = [];   // all winner rows (one per date)
+  let sortCol      = 'date';
+  let sortDir      = 'desc';
+  let currentPage  = 1;
+  const PAGE_SIZE  = 5;
+
+  function buildHistoryRows() {
+    // Include all records from allRecords + any looked-up dates
     const byDate = {};
     allRecords.forEach(row => {
       const { ticker, open, close, pct, date } = normalizeMover(row);
-      if (!byDate[date] || Math.abs(pct) > Math.abs(byDate[date].pct)) byDate[date] = { ticker, open, close, pct, date };
+      if (!date) return;
+      // Winner = highest positive % gain (not highest absolute)
+      const existing = byDate[date];
+      if (!existing) {
+        byDate[date] = { ticker, open, close, pct, date };
+      } else {
+        // Prefer positive over negative; among positives pick highest; among all-negative pick least negative
+        const prevPct = existing.pct;
+        const isCurrBetter = (pct > 0 && prevPct <= 0) ||
+                             (pct > 0 && prevPct > 0 && pct > prevPct) ||
+                             (pct <= 0 && prevPct <= 0 && pct > prevPct);
+        if (isCurrBetter) byDate[date] = { ticker, open, close, pct, date };
+      }
     });
-    const topMovers = Object.values(byDate).sort((a, b) => b.date.localeCompare(a.date));
-    tbody.innerHTML = topMovers.map(({ ticker, open, close, pct, date }) => {
+    historyRows = Object.values(byDate);
+    sortAndRender();
+  }
+
+  function sortAndRender() {
+    const sorted = [...historyRows].sort((a, b) => {
+      let av = a[sortCol], bv = b[sortCol];
+      if (sortCol === 'pct' || sortCol === 'open' || sortCol === 'close') {
+        av = parseFloat(av); bv = parseFloat(bv);
+      }
+      if (av < bv) return sortDir === 'asc' ? -1 : 1;
+      if (av > bv) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+    if (currentPage > totalPages) currentPage = totalPages;
+    const start   = (currentPage - 1) * PAGE_SIZE;
+    const pageRows = sorted.slice(start, start + PAGE_SIZE);
+
+    const tbody = document.getElementById('historyBody');
+    if (!sorted.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="tbl-msg">No history available yet.</td></tr>';
+      document.getElementById('pagination').innerHTML = '';
+      return;
+    }
+
+    tbody.innerHTML = pageRows.map(({ ticker, open, close, pct, date }) => {
       const c = cls(pct);
       return `<tr><td>${date}</td><td class="ticker-cell">${ticker}</td><td>${fmt(open)}</td><td>${fmt(close)}</td><td><span class="badge ${c}">${fmtP(pct)}</span></td></tr>`;
     }).join('');
+
+    // Update sort indicators
+    document.querySelectorAll('th[data-col]').forEach(th => {
+      th.classList.remove('sort-asc', 'sort-desc');
+      if (th.dataset.col === sortCol) th.classList.add(sortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+    });
+
+    // Pagination
+    const pg = document.getElementById('pagination');
+    if (totalPages <= 1) { pg.innerHTML = ''; return; }
+    const btns = [];
+    btns.push(`<button class="page-btn" onclick="goPage(${currentPage-1})" ${currentPage===1?'disabled':''}>‹ Prev</button>`);
+    for (let i = 1; i <= totalPages; i++) {
+      btns.push(`<button class="page-btn${i===currentPage?' active':''}" onclick="goPage(${i})">${i}</button>`);
+    }
+    btns.push(`<button class="page-btn" onclick="goPage(${currentPage+1})" ${currentPage===totalPages?'disabled':''}>Next ›</button>`);
+    pg.innerHTML = `
+      <div class="pagination-info">Page ${currentPage} of ${totalPages} · ${sorted.length} dates</div>
+      <div class="pagination-btns">${btns.join('')}</div>`;
+  }
+
+  function goPage(n) {
+    const totalPages = Math.max(1, Math.ceil(historyRows.length / PAGE_SIZE));
+    if (n < 1 || n > totalPages) return;
+    currentPage = n;
+    sortAndRender();
+  }
+
+  // Column sort
+  document.addEventListener('click', e => {
+    const th = e.target.closest('th[data-col]');
+    if (!th) return;
+    const col = th.dataset.col;
+    if (sortCol === col) {
+      sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      sortCol = col;
+      sortDir = col === 'date' ? 'desc' : 'asc';
+    }
+    currentPage = 1;
+    sortAndRender();
+  });
+
+  function renderHistory() {
+    buildHistoryRows();
   }
 
   async function lookupDate(dateStr) {
@@ -529,10 +640,10 @@
     card.style.display = 'block';
   }
 
-  // modal and chart logic
+  // ── Modal & Chart ────────────────────────────────────
   let modalChart    = null;
   let activeTicker  = null;
-  let activeRange   = '5D';
+  let activeRange   = '1D';
   let modalMomentum = null; // locked on open, doesn't change with range
 
   const crosshairPlugin = {
@@ -556,11 +667,11 @@
 
   async function openModal(ticker, cardDataEncoded) {
     activeTicker = ticker;
-    activeRange  = '5D';
+    activeRange  = '1D';
     const cardData = JSON.parse(decodeURIComponent(cardDataEncoded));
 
     document.getElementById('modalOverlay').classList.add('open');
-    document.querySelectorAll('.range-btn').forEach(b => b.classList.toggle('active', b.dataset.range === '5D'));
+    document.querySelectorAll('.range-btn').forEach(b => b.classList.toggle('active', b.dataset.range === '1D'));
 
     const c = cls(cardData.changePct);
     document.getElementById('modalCompany').textContent      = COMPANIES[ticker] || ticker;
@@ -579,7 +690,7 @@
     document.getElementById('momentumStats').innerHTML = '';
     document.getElementById('momentumFill').style.width = '0%';
 
-    await loadChart(ticker, '5D', true);
+    await loadChart(ticker, '1D', true);
   }
 
   async function loadChart(ticker, range, isFirstLoad) {

@@ -15,7 +15,6 @@ SECRET_NAME = os.environ["SECRET_NAME"]
 REGION      = os.environ.get("AWS_REGION", "us-east-1")
 WATCHLIST   = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA']
 
-
 def build_response(status_code, body):
     return {
         'statusCode': status_code,
@@ -27,12 +26,10 @@ def build_response(status_code, body):
         'body': json.dumps(body)
     }
 
-
 def get_secrets():
     client = boto3.client('secretsmanager', region_name=REGION)
     response = client.get_secret_value(SecretId=SECRET_NAME)
     return json.loads(response['SecretString'])
-
 
 def fetch_finnhub_quote(ticker, finnhub_key):
     url = f"https://finnhub.io/api/v1/quote?symbol={ticker}&token={finnhub_key}"
@@ -56,14 +53,8 @@ def fetch_finnhub_quote(ticker, finnhub_key):
                 'live':              True,
             }
     except Exception as e:
-        print(f"CANDLE ERROR {ticker}: {type(e).__name__}: {str(e)}")
-        logger.error(f"Finnhub candle error for {ticker}: {str(e)}")
-        return []
-    
-    if data.get('s') != 'ok':
-        logger.warning(f"Candle data not ok for {ticker}: {data.get('s')} — full response: {data}")
-        return []
-
+        logger.error(f"Finnhub quote error for {ticker}: {str(e)}")
+        return None
 
 def fetch_all_live_quotes(finnhub_key):
     quotes = []
@@ -74,8 +65,14 @@ def fetch_all_live_quotes(finnhub_key):
     return quotes
 
 def fetch_yahoo_candles(ticker, range_str):
-    yahoo_range = {'5D': '5d', '1M': '1mo', '1Y': '1y', '5Y': '5y'}.get(range_str, '1mo')
-    yahoo_interval = {'5D': '1d', '1M': '1d', '1Y': '1d', '5Y': '1wk'}.get(range_str, '1d')
+    yahoo_params = {
+        '1D': ('1d',  '5m'),
+        '5D': ('5d',  '1d'),
+        '1M': ('1mo', '1d'),
+        '1Y': ('1y',  '1d'),
+        '5Y': ('5y',  '1wk'),
+    }.get(range_str, ('1mo', '1d'))
+    yahoo_range, yahoo_interval = yahoo_params
     url = (
         f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
         f"?interval={yahoo_interval}&range={yahoo_range}"
@@ -87,7 +84,7 @@ def fetch_yahoo_candles(ticker, range_str):
     try:
         with urllib.request.urlopen(req, timeout=10) as response:
             data = json.loads(response.read().decode())
-        result = data['chart']['result'][0]
+        result    = data['chart']['result'][0]
         timestamps = result['timestamp']
         closes     = result['indicators']['quote'][0]['close']
         opens      = result['indicators']['quote'][0]['open']
@@ -99,16 +96,19 @@ def fetch_yahoo_candles(ticker, range_str):
                     'c': round(closes[i], 2),
                     'o': round(opens[i],  2),
                 })
+        logger.info(f"Yahoo returned {len(candles)} candles for {ticker} {range_str}")
         return candles
     except Exception as e:
         logger.error(f"Yahoo Finance error for {ticker} {range_str}: {str(e)}")
         return []
 
-
 def get_candles_from_dynamo(table, ticker, range_str):
+    if range_str == '1D':
+        return fetch_yahoo_candles(ticker, '1D')
+
     min_points = {'5D': 5, '1M': 20, '1Y': 200, '5Y': 200}.get(range_str, 20)
     days_back  = {'5D': 15, '1M': 45, '1Y': 400, '5Y': 1900}.get(range_str, 45)
-    max_points = {'5D': 5, '1M': 30, '1Y': 252, '5Y': 260}.get(range_str, 30)
+    max_points = {'5D': 5,  '1M': 30, '1Y': 252, '5Y': 260}.get(range_str, 30)
 
     cutoff = str(date.today() - timedelta(days=days_back))
     try:
@@ -135,44 +135,10 @@ def get_candles_from_dynamo(table, ticker, range_str):
 
     # Fall back to Yahoo Finance if not enough local data
     if len(candles) < min_points:
-        logger.info(f"Only {len(candles)} points in DynamoDB for {ticker} {range_str}, fetching from Yahoo")
+        logger.info(f"Only {len(candles)} DynamoDB points for {ticker} {range_str}, using Yahoo")
         candles = fetch_yahoo_candles(ticker, range_str)
 
     return candles
-
-def fetch_finnhub_candles(ticker, range_str, finnhub_key):
-    now = int(datetime.utcnow().timestamp())
-    range_config = {
-        '1D': {'resolution': '5',  'from': now - 86400},
-        '5D': {'resolution': '60', 'from': now - 5 * 86400},
-        '1M': {'resolution': 'D',  'from': now - 30 * 86400},
-        '1Y': {'resolution': 'D',  'from': now - 365 * 86400},
-        '5Y': {'resolution': 'W',  'from': now - 5 * 365 * 86400},
-    }
-    config = range_config.get(range_str, range_config['1M'])
-    url = (
-        f"https://finnhub.io/api/v1/stock/candle"
-        f"?symbol={ticker}"
-        f"&resolution={config['resolution']}"
-        f"&from={config['from']}"
-        f"&to={now}"
-        f"&token={finnhub_key}"
-    )
-    req = urllib.request.Request(url, headers={'User-Agent': 'stock-watchlist/1.0'})
-    try:
-        with urllib.request.urlopen(req, timeout=10) as response:
-            data = json.loads(response.read().decode())
-            if data.get('s') != 'ok':
-                logger.warning(f"Candle data not ok for {ticker}: {data.get('s')}")
-                return []
-            return [
-                {'t': data['t'][i], 'c': data['c'][i], 'o': data['o'][i]}
-                for i in range(len(data['t']))
-            ]
-    except Exception as e:
-        logger.error(f"Finnhub candle error for {ticker}: {str(e)}")
-        return []
-
 
 def calculate_momentum(candles):
     if len(candles) < 5:
@@ -211,7 +177,6 @@ def calculate_momentum(candles):
         'down_days':   dn_days,
     }
 
-
 def get_items_for_date(table, target_date):
     try:
         response = table.query(
@@ -221,7 +186,6 @@ def get_items_for_date(table, target_date):
     except Exception as e:
         logger.error(f"DynamoDB query error for {target_date}: {str(e)}")
         return []
-
 
 def get_history(table, num_days=14, limit_dates=5):
     found_dates = []
@@ -236,7 +200,6 @@ def get_history(table, num_days=14, limit_dates=5):
             break
     all_items.sort(key=lambda x: (x['date'], x['ticker']), reverse=True)
     return all_items
-
 
 def fetch_from_massive_all(target_date, api_key):
     results = []
@@ -261,7 +224,6 @@ def fetch_from_massive_all(target_date, api_key):
         time.sleep(0.5)
     return results
 
-
 def is_market_open():
     now    = datetime.utcnow()
     et_off = -4 if 3 <= now.month <= 11 else -5
@@ -270,7 +232,6 @@ def is_market_open():
         return False
     et_time = et.hour + et.minute / 60
     return 9.5 <= et_time < 16.0
-
 
 def lambda_handler(event, context):
     dynamodb = boto3.resource('dynamodb', region_name=REGION)
