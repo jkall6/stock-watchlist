@@ -27,11 +27,11 @@ An AWS application that tracks daily stock performance for `AAPL`, `MSFT`, `GOOG
 
 ## CI/CD (GitHub Actions)
 
-Every push to `main` automatically packages the Lambdas, runs `terraform apply`, and uploads the frontend.
+Every push to main automatically packages the Lambdas, runs terraform apply, and uploads the frontend.
 
 **1. Add secrets to GitHub**
 
-Go to repo → **Settings** → **Secrets and variables** → **Actions** and add:
+Go to repo → Settings → Secrets and variables → Actions and add:
 
 | Secret | Value |
 |--------|-------|
@@ -41,4 +41,4 @@ Go to repo → **Settings** → **Secrets and variables** → **Actions** and ad
 **2. Push to main**
 
 
-See progress+ under the **Actions** tab.
+See progress under the Actions tab.

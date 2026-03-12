@@ -52,7 +52,7 @@ def fetch_finnhub_quote(ticker, finnhub_key):
                 'ticker':            ticker,
                 'price':             round(price,      2),
                 'open_price':        round(open_price, 2),
-                'close_price':       round(price,      2), 
+                'close_price':       round(price,      2),  # current price as close
                 'prev_close':        round(prev_close, 2),
                 'percentage_change': round(change_pct, 4),
                 'live':              True,
@@ -70,7 +70,7 @@ def fetch_all_live_quotes(finnhub_key):
             quotes.append(q)
         else:
             quotes.append({'ticker': ticker, 'error': True})
-        time.sleep(0.2) 
+        time.sleep(0.2)  # stay under 60 calls/min
     return quotes
 
 
@@ -86,7 +86,7 @@ def get_items_for_date(table, target_date):
         return []
 
 
-def get_history(table, num_days=14, limit_dates=5):
+def get_history(table, num_days=14, limit_dates=7):
     found_dates = []
     all_items   = []
     for i in range(1, num_days + 1):
@@ -115,30 +115,6 @@ def is_market_open():
     et_time = et.hour + et.minute / 60
     return 9.5 <= et_time < 16.0
 
-def fetch_from_massive_all(target_date, api_key):
-    results = []
-    for ticker in WATCHLIST:
-        url = f"https://api.massive.com/v1/open-close/{ticker}/{target_date}?apiKey={api_key}"
-        req = urllib.request.Request(url, headers={'User-Agent': 'stock-watchlist/1.0'})
-        try:
-            with urllib.request.urlopen(req, timeout=10) as response:
-                data = json.loads(response.read().decode())
-            open_price  = float(data['open'])
-            close_price = float(data['close'])
-            pct = ((close_price - open_price) / open_price * 100) if open_price else 0
-            results.append({
-                'date':              target_date,
-                'ticker':            ticker,
-                'percentage_change': str(round(pct,         4)),
-                'open_price':        str(round(open_price,  2)),
-                'close_price':       str(round(close_price, 2))
-            })
-        except Exception as e:
-            logger.warning(f"Could not fetch {ticker} from Massive: {str(e)}")
-        time.sleep(0.5)
-    return results
-
-# Lambda handler: supports two modes — if ?date=YYYY-MM-DD is provided, looks up that date. Otherwise, returns recent history and live quotes if market is open.
 def lambda_handler(event, context):
     dynamodb = boto3.resource('dynamodb', region_name=REGION)
     table    = dynamodb.Table(TABLE_NAME)
@@ -158,16 +134,7 @@ def lambda_handler(event, context):
         items = get_items_for_date(table, requested_date)
 
         if not items:
-            logger.info(f"{requested_date} not in DB, fetching from Massive")
-            items = fetch_from_massive_all(requested_date, massive_key)
-            if items:
-                for item in items:
-                    try:
-                        table.put_item(Item=item)
-                    except Exception as e:
-                        logger.warning(f"Could not save {item['ticker']}: {str(e)}")
-
-        if not items:
+            # Not in DB — return empty, frontend will show no data
             return build_response(200, {
                 'movers':  [],
                 'message': f'No data for {requested_date}'
