@@ -4,7 +4,7 @@ import logging
 import os
 import urllib.request
 import time
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 from boto3.dynamodb.conditions import Key
 
 logger = logging.getLogger()
@@ -34,14 +34,12 @@ def get_secrets():
     return json.loads(response['SecretString'])
 
 
-# Finnhub live quote
 def fetch_finnhub_quote(ticker, finnhub_key):
     url = f"https://finnhub.io/api/v1/quote?symbol={ticker}&token={finnhub_key}"
     req = urllib.request.Request(url, headers={'User-Agent': 'stock-watchlist/1.0'})
     try:
         with urllib.request.urlopen(req, timeout=10) as response:
             data = json.loads(response.read().decode())
-            # c=current price, o=open, pc=prev close, h=high, l=low
             if not data.get('c'):
                 return None
             price      = data['c']
@@ -52,13 +50,13 @@ def fetch_finnhub_quote(ticker, finnhub_key):
                 'ticker':            ticker,
                 'price':             round(price,      2),
                 'open_price':        round(open_price, 2),
-                'close_price':       round(price,      2),  # current price as close
+                'close_price':       round(price,      2),
                 'prev_close':        round(prev_close, 2),
                 'percentage_change': round(change_pct, 4),
                 'live':              True,
             }
     except Exception as e:
-        logger.error(f"Finnhub error for {ticker}: {str(e)}")
+        logger.error(f"Finnhub quote error for {ticker}: {str(e)}")
         return None
 
 
@@ -66,15 +64,91 @@ def fetch_all_live_quotes(finnhub_key):
     quotes = []
     for ticker in WATCHLIST:
         q = fetch_finnhub_quote(ticker, finnhub_key)
-        if q:
-            quotes.append(q)
-        else:
-            quotes.append({'ticker': ticker, 'error': True})
-        time.sleep(0.2)  # stay under 60 calls/min
+        quotes.append(q if q else {'ticker': ticker, 'error': True})
+        time.sleep(0.2)
     return quotes
 
 
-# DynamoDB queries
+def fetch_finnhub_candles(ticker, range_str, finnhub_key):
+    now = int(datetime.utcnow().timestamp())
+    range_config = {
+        '1D': {'resolution': '5',  'from': now - 86400},
+        '5D': {'resolution': '60', 'from': now - 5 * 86400},
+        '1M': {'resolution': 'D',  'from': now - 30 * 86400},
+        '1Y': {'resolution': 'D',  'from': now - 365 * 86400},
+        '5Y': {'resolution': 'W',  'from': now - 5 * 365 * 86400},
+    }
+    config = range_config.get(range_str, range_config['1M'])
+    url = (
+        f"https://finnhub.io/api/v1/stock/candle"
+        f"?symbol={ticker}"
+        f"&resolution={config['resolution']}"
+        f"&from={config['from']}"
+        f"&to={now}"
+        f"&token={finnhub_key}"
+    )
+    req = urllib.request.Request(url, headers={'User-Agent': 'stock-watchlist/1.0'})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as response:
+            data = json.loads(response.read().decode())
+            if data.get('s') != 'ok':
+                logger.warning(f"Candle data not ok for {ticker}: {data.get('s')}")
+                return []
+            return [
+                {'t': data['t'][i], 'c': data['c'][i], 'o': data['o'][i]}
+                for i in range(len(data['t']))
+            ]
+    except Exception as e:
+        logger.error(f"Finnhub candle error for {ticker}: {str(e)}")
+        return []
+
+
+def calculate_momentum(candles):
+    """
+    Simple short-term momentum signal based on last 5 closes.
+    Not investment advice — short-term indicator only.
+    """
+    if len(candles) < 5:
+        return {
+            'signal': 'INSUFFICIENT_DATA',
+            'label': 'Not enough data',
+            'description': 'Insufficient price history to calculate momentum.',
+            'disclaimer': 'This is a short-term momentum signal only. Not investment advice.'
+        }
+    closes   = [c['c'] for c in candles[-5:]]
+    current  = closes[-1]
+    start    = closes[0]
+    pct_5    = ((current - start) / start * 100) if start else 0
+    up_days  = sum(1 for i in range(1, len(closes)) if closes[i] > closes[i-1])
+    dn_days  = len(closes) - 1 - up_days
+
+    if pct_5 > 3 and up_days >= 4:
+        signal, label = 'STRONG_UP',   'Strong Upward Momentum'
+        desc = f'Up {pct_5:.1f}% over the last 5 sessions with {up_days}/4 up days. Short-term trend is firmly positive.'
+    elif pct_5 > 1 and up_days >= 3:
+        signal, label = 'MILD_UP',     'Mild Upward Momentum'
+        desc = f'Up {pct_5:.1f}% over the last 5 sessions. Modest positive short-term trend.'
+    elif pct_5 < -3 and dn_days >= 4:
+        signal, label = 'STRONG_DOWN', 'Strong Downward Momentum'
+        desc = f'Down {abs(pct_5):.1f}% over the last 5 sessions with {dn_days}/4 down days. Short-term trend is firmly negative.'
+    elif pct_5 < -1 and dn_days >= 3:
+        signal, label = 'MILD_DOWN',   'Mild Downward Momentum'
+        desc = f'Down {abs(pct_5):.1f}% over the last 5 sessions. Modest negative short-term trend.'
+    else:
+        signal, label = 'NEUTRAL',     'Neutral / Sideways'
+        desc = f'Mixed price action over the last 5 sessions ({pct_5:+.1f}%). No clear short-term directional bias.'
+
+    return {
+        'signal':      signal,
+        'label':       label,
+        'description': desc,
+        'pct_5day':    round(pct_5, 2),
+        'up_days':     up_days,
+        'down_days':   dn_days,
+        'disclaimer':  'This is a short-term momentum signal only based on recent price action. It is not a prediction of future performance or investment advice.',
+    }
+
+
 def get_items_for_date(table, target_date):
     try:
         response = table.query(
@@ -86,7 +160,7 @@ def get_items_for_date(table, target_date):
         return []
 
 
-def get_history(table, num_days=14, limit_dates=7):
+def get_history(table, num_days=14, limit_dates=5):
     found_dates = []
     all_items   = []
     for i in range(1, num_days + 1):
@@ -101,19 +175,39 @@ def get_history(table, num_days=14, limit_dates=7):
     return all_items
 
 
-# Check if market is currently open (weekdays 9:30-16:00 ET). Used to determine whether to fetch live quotes or rely on cached data.
+def fetch_from_massive_all(target_date, api_key):
+    results = []
+    for ticker in WATCHLIST:
+        url = f"https://api.massive.com/v1/open-close/{ticker}/{target_date}?apiKey={api_key}"
+        req = urllib.request.Request(url, headers={'User-Agent': 'stock-watchlist/1.0'})
+        try:
+            with urllib.request.urlopen(req, timeout=10) as response:
+                data = json.loads(response.read().decode())
+            open_price  = float(data['open'])
+            close_price = float(data['close'])
+            pct = ((close_price - open_price) / open_price * 100) if open_price else 0
+            results.append({
+                'date':              target_date,
+                'ticker':            ticker,
+                'percentage_change': str(round(pct,         4)),
+                'open_price':        str(round(open_price,  2)),
+                'close_price':       str(round(close_price, 2))
+            })
+        except Exception as e:
+            logger.warning(f"Could not fetch {ticker} from Massive: {str(e)}")
+        time.sleep(0.5)
+    return results
+
+
 def is_market_open():
-    import datetime
-    now     = datetime.datetime.utcnow()
-    # Approximate DST: EDT (UTC-4) Mar-Nov, EST (UTC-5) Nov-Mar
-    month   = now.month
-    et_off  = -4 if 3 <= month <= 11 else -5
-    et      = now + datetime.timedelta(hours=et_off)
-    weekday = et.weekday()  # 0=Mon, 6=Sun
-    if weekday >= 5:
+    now    = datetime.utcnow()
+    et_off = -4 if 3 <= now.month <= 11 else -5
+    et     = now + timedelta(hours=et_off)
+    if et.weekday() >= 5:
         return False
     et_time = et.hour + et.minute / 60
     return 9.5 <= et_time < 16.0
+
 
 def lambda_handler(event, context):
     dynamodb = boto3.resource('dynamodb', region_name=REGION)
@@ -121,57 +215,62 @@ def lambda_handler(event, context):
     params   = event.get('queryStringParameters') or {}
 
     try:
-        secrets      = get_secrets()
-        massive_key  = secrets.get('api_key')
-        finnhub_key  = secrets.get('finnhub_key')
+        secrets     = get_secrets()
+        massive_key = secrets.get('api_key')
+        finnhub_key = secrets.get('finnhub_key')
     except Exception as e:
         logger.error(f"Could not load secrets: {str(e)}")
         return build_response(500, {'error': 'Configuration error'})
 
-    # Lookup for specific date: check cache first, then Massive API fallback if not found. Returns the single biggest mover for that date, along with the full history (including the newly fetched data if we had to go to Massive).
+    # chart data for specific ticker and range (e.g. ?ticker=AAPL&range=1M). Range defaults to 1M if not provided. Momentum signal is based on last 5 closes within the selected range. Only fetches from Finnhub, no caching, since this is for interactive charting and not the main watchlist table. If you want to add caching here, consider using a separate DynamoDB table with a short TTL to avoid cluttering the main watchlist data.
+    ticker_param = params.get('ticker')
+    range_param  = params.get('range', '1M')
+    if ticker_param:
+        ticker   = ticker_param.upper()
+        candles  = fetch_finnhub_candles(ticker, range_param, finnhub_key)
+        momentum = calculate_momentum(candles)
+        quote    = fetch_finnhub_quote(ticker, finnhub_key)
+        return build_response(200, {
+            'ticker':   ticker,
+            'range':    range_param,
+            'candles':  candles,
+            'momentum': momentum,
+            'quote':    quote,
+        })
+
+    # Date-specific data for watchlist table (e.g. ?date=2024-06-01). Checks cache first, then Massive if not found.
     requested_date = params.get('date')
     if requested_date:
         items = get_items_for_date(table, requested_date)
-
         if not items:
-            # Not in DB — return empty, frontend will show no data
-            return build_response(200, {
-                'movers':  [],
-                'message': f'No data for {requested_date}'
-            })
+            logger.info(f"{requested_date} not in DB, fetching from Massive")
+            items = fetch_from_massive_all(requested_date, massive_key)
+            if items:
+                for item in items:
+                    try:
+                        table.put_item(Item=item)
+                    except Exception as e:
+                        logger.warning(f"Could not save {item['ticker']}: {str(e)}")
+        if not items:
+            return build_response(200, {'movers': [], 'message': f'No data for {requested_date}'})
 
         def safe_pct(it):
             try: return abs(float(it['percentage_change']))
             except: return 0
-        selected = max(items, key=safe_pct)
-
-        history = get_history(table)
+        selected      = max(items, key=safe_pct)
+        history       = get_history(table)
         history_dates = {m['date'] for m in history}
         if requested_date not in history_dates:
             history.extend(items)
             history.sort(key=lambda x: (x['date'], x['ticker']), reverse=True)
-
-        return build_response(200, {
-            'movers':   history,
-            'selected': selected,
-            'source':   'cache'
-        })
+        return build_response(200, {'movers': history, 'selected': selected, 'source': 'cache'})
 
     # Historical data for watchlist table (most recent 5 trading days).
     history = get_history(table)
-
-    # Live quotes during market hours, stored data otherwise
     if is_market_open() and finnhub_key:
         logger.info("Market open — fetching live Finnhub quotes")
         quotes = fetch_all_live_quotes(finnhub_key)
-        return build_response(200, {
-            'quotes':  quotes,   # live watchlist cards
-            'movers':  history,  # historical table
-            'live':    True,
-        })
+        return build_response(200, {'quotes': quotes, 'movers': history, 'live': True})
     else:
         logger.info("Market closed — returning stored data")
-        return build_response(200, {
-            'movers': history,
-            'live':   False,
-        })
+        return build_response(200, {'movers': history, 'live': False})
