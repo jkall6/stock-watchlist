@@ -21,7 +21,7 @@
       padding: 1rem;
     }
 
-    h1 { font-size: 1.8rem; font-weight: 700; margin-bottom: 0.25rem; }
+    h1 { font-size: 3rem; font-weight: 700; margin-bottom: 0.25rem; }
     .subtitle { color: #94a3b8; font-size: 0.85rem; margin-bottom: 0.5rem; }
     .refresh-info {
       font-size: 0.75rem;
@@ -258,7 +258,7 @@
 </head>
 <body>
 <div class="container">
-  <h1>STOCK WATCHLIST</h1>
+  <h1>Stock Watchlist</h1>
   <p class="subtitle">AAPL · MSFT · GOOGL · AMZN · TSLA</p>
   <div class="refresh-info">
     <div class="refresh-dot" id="refreshDot"></div>
@@ -277,7 +277,7 @@
   </div>
 
   <div class="section-header">
-    <div class="section-title">Daily Winners — Top Gainers</div>
+    <div class="section-title">Daily Winners - Top Gains</div>
     <div class="controls">
       <label for="datepicker">Look up previous days:</label>
       <input type="date" id="datepicker" />
@@ -361,6 +361,16 @@
   const REFRESH_MS  = 5 * 60 * 1000;
 
   let allRecords   = [];
+  const LOOKUP_KEY = 'swl_lookups';
+
+  function saveLookupsToStorage(records) {
+    try { localStorage.setItem(LOOKUP_KEY, JSON.stringify(records)); } catch(e) {}
+  }
+
+  function loadLookupsFromStorage() {
+    try { return JSON.parse(localStorage.getItem(LOOKUP_KEY) || '[]'); } catch(e) { return []; }
+  }
+  
   let refreshTimer = null;
 
   const fmt   = n => `$${parseFloat(n).toFixed(2)}`;
@@ -463,6 +473,13 @@
     try {
       const { movers, quotes, live } = await fetchFromLambda();
       allRecords = movers.sort((a, b) => b.date.localeCompare(a.date));
+      allRecords = movers.sort((a, b) => b.date.localeCompare(a.date));
+      // Merge saved lookups back in
+      const saved = loadLookupsFromStorage();
+      saved.forEach(m => {
+        if (!allRecords.find(x => x.date === m.date && x.ticker === m.ticker)) allRecords.push(m);
+      });
+      allRecords.sort((a, b) => b.date.localeCompare(a.date));
       if (live && quotes && quotes.length) {
         renderWatchlist(quotes.map(q => q.error ? null : {
           ticker: q.ticker, price: q.price, open: q.open_price, close: q.close_price,
@@ -603,9 +620,7 @@
     card.style.display = 'none';
     noData.style.display = 'none';
     const dateRecords = allRecords.filter(m => normalizeMover(m).date === dateStr);
-    let record = dateRecords.length
-      ? dateRecords.reduce((a, b) => Math.abs(parseFloat(a.percentage_change)) > Math.abs(parseFloat(b.percentage_change)) ? a : b)
-      : null;
+    let record = dateRecords.length ? pickWinner(dateRecords) : null;
     if (!record) {
       noData.textContent = 'Fetching data…';
       noData.style.display = 'block';
@@ -614,10 +629,12 @@
         if (movers.length) {
           movers.forEach(m => { if (!allRecords.find(x => x.date === m.date && x.ticker === m.ticker)) allRecords.push(m); });
           allRecords.sort((a, b) => b.date.localeCompare(a.date));
+          const latestDates = new Set(movers.map(m => m.date));
+          const extras = allRecords.filter(m => !latestDates.has(m.date));
+          saveLookupsToStorage(extras);
           renderHistory();
         }
-        record = selected || (movers.filter(m => m.date === dateStr).reduce((a, b) =>
-          Math.abs(parseFloat(a.percentage_change)) > Math.abs(parseFloat(b.percentage_change)) ? a : b, null));
+        record = selected || pickWinner(movers.filter(m => normalizeMover(m).date === dateStr));
       } catch (err) {
         noData.textContent = `Error: ${err.message}`;
         return;
