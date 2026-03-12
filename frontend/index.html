@@ -338,7 +338,7 @@
     <div class="stats-row" id="statsRow"></div>
     <div class="momentum-box">
       <div class="momentum-header">
-        <div class="momentum-label">Short-Term Momentum Signal</div>
+        <div class="momentum-label">Short-Term Momentum</div>
         <div class="momentum-badge" id="momentumBadge"></div>
       </div>
       <div class="momentum-signal-text" id="momentumSignalText"></div>
@@ -346,7 +346,7 @@
       <div class="momentum-stats" id="momentumStats"></div>
       <div class="momentum-desc" id="momentumDesc"></div>
       <div class="momentum-disclaimer">
-        This is a short-term momentum signal based on recent price action only.
+        This is a short-term momentum indicator based on recent price directions only.
         It is <strong>not</strong> a prediction of future performance or investment advice.
         Past momentum does not guarantee future results.
       </div>
@@ -860,7 +860,7 @@
     document.getElementById('momentumSignalText').textContent = m.label || '';
     document.getElementById('momentumSignalText').className   = 'momentum-signal-text ' + m.signal;
     document.getElementById('momentumStats').innerHTML =
-      `<div class="momentum-stat">5-Day Change: <span>${m.pct_5day !== undefined ? (m.pct_5day >= 0 ? '+' : '') + m.pct_5day + '%' : '—'}</span></div>
+      `<div class="momentum-stat">Signal Change: <span>${m.pct_5day !== undefined ? (m.pct_5day >= 0 ? '+' : '') + m.pct_5day + '%' : '—'}</span></div>
        <div class="momentum-stat">Up Days: <span>${m.up_days ?? '—'}/4</span></div>
        <div class="momentum-stat">Down Days: <span>${m.down_days ?? '—'}/4</span></div>`;
     document.getElementById('momentumDesc').textContent = m.description || '';

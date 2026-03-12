@@ -154,19 +154,19 @@ def calculate_momentum(candles):
 
     if pct_5 > 3 and up_days >= 4:
         signal, label = 'STRONG_UP',   'Strong Upward Momentum'
-        desc = f'Up {pct_5:.1f}% over the last 5 sessions with {up_days}/4 up days. Short-term trend is firmly positive.'
+        desc = f'Up {pct_5:.1f}% over the last 5 sessions with up {pct_5:.1f}% over the last 5 sessions with {up_days} out of 4 days closing higher. Momentum is clearly pointing up right now.'
     elif pct_5 > 1 and up_days >= 3:
         signal, label = 'MILD_UP',     'Mild Upward Momentum'
-        desc = f'Up {pct_5:.1f}% over the last 5 sessions. Modest positive short-term trend.'
+        desc = f'Up {pct_5:.1f}% over the last 5 sessions with up {pct_5:.1f}% over the last 5 sessions. Nothing explosive, but the trend is leaning positive.'
     elif pct_5 < -3 and dn_days >= 4:
         signal, label = 'STRONG_DOWN', 'Strong Downward Momentum'
-        desc = f'Down {abs(pct_5):.1f}% over the last 5 sessions with {dn_days}/4 down days. Short-term trend is firmly negative.'
+        desc = f'Down {abs(pct_5):.1f}% over the last 5 sessions with down {abs(pct_5):.1f}% over the last 5 sessions with {dn_days} out of 4 days closing lower. Selling pressure has been consistent.'
     elif pct_5 < -1 and dn_days >= 3:
         signal, label = 'MILD_DOWN',   'Mild Downward Momentum'
-        desc = f'Down {abs(pct_5):.1f}% over the last 5 sessions. Modest negative short-term trend.'
+        desc = f'Down {abs(pct_5):.1f}% over the last 5 sessions. with down {abs(pct_5):.1f}% over the last 5 sessions. Short-term lean is negative.'
     else:
         signal, label = 'NEUTRAL',     'Neutral / Sideways'
-        desc = f'Mixed price action over the last 5 sessions ({pct_5:+.1f}%). No clear short-term directional bias.'
+        desc = f'Up and down over the last 5 sessions, ending about flat ({pct_5:+.1f}%). No strong push in either direction right now.'
 
     return {
         'signal':      signal,
