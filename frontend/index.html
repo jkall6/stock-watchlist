@@ -378,6 +378,18 @@
   const cls   = n => parseFloat(n) >= 0 ? 'gain' : 'loss';
   const arrow = n => parseFloat(n) >= 0 ? '▲' : '▼';
 
+  function pickTopGain(records) {
+  if (!records.length) return null;
+  return records.reduce((best, curr) => {
+    const bp = parseFloat(best.percentage_change || 0);
+    const cp = parseFloat(curr.percentage_change || 0);
+    const isBetter = (cp > 0 && bp <= 0) ||
+                     (cp > 0 && bp > 0 && cp > bp) ||
+                     (cp <= 0 && bp <= 0 && cp > bp);
+    return isBetter ? curr : best;
+  });
+}
+
   function isDST(date) {
     const jan = new Date(date.getFullYear(), 0, 1).getTimezoneOffset();
     const jul = new Date(date.getFullYear(), 6, 1).getTimezoneOffset();
@@ -620,7 +632,7 @@
     card.style.display = 'none';
     noData.style.display = 'none';
     const dateRecords = allRecords.filter(m => normalizeMover(m).date === dateStr);
-    let record = dateRecords.length ? pickWinner(dateRecords) : null;
+    let record = dateRecords.length ? pickTopGain(dateRecords) : null;
     if (!record) {
       noData.textContent = 'Fetching data…';
       noData.style.display = 'block';
@@ -634,7 +646,7 @@
           saveLookupsToStorage(extras);
           renderHistory();
         }
-        record = selected || pickWinner(movers.filter(m => normalizeMover(m).date === dateStr));
+        record = selected || pickTopGain(movers.filter(m => m.date === dateStr));
       } catch (err) {
         noData.textContent = `Error: ${err.message}`;
         return;
@@ -787,6 +799,7 @@
             titleFont: { size: 10 },
             bodyFont: { size: 13, weight: '700' },
             padding: 8,
+            displayColors: false,
             callbacks: { label: ctx => `$${ctx.parsed.y.toFixed(2)}` }
           }
         },
