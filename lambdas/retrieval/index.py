@@ -73,9 +73,43 @@ def fetch_all_live_quotes(finnhub_key):
         time.sleep(0.2)
     return quotes
 
+def fetch_yahoo_candles(ticker, range_str):
+    yahoo_range = {'5D': '5d', '1M': '1mo', '1Y': '1y', '5Y': '5y'}.get(range_str, '1mo')
+    yahoo_interval = {'5D': '1d', '1M': '1d', '1Y': '1d', '5Y': '1wk'}.get(range_str, '1d')
+    url = (
+        f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
+        f"?interval={yahoo_interval}&range={yahoo_range}"
+    )
+    req = urllib.request.Request(url, headers={
+        'User-Agent': 'Mozilla/5.0',
+        'Accept': 'application/json',
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=10) as response:
+            data = json.loads(response.read().decode())
+        result = data['chart']['result'][0]
+        timestamps = result['timestamp']
+        closes     = result['indicators']['quote'][0]['close']
+        opens      = result['indicators']['quote'][0]['open']
+        candles = []
+        for i in range(len(timestamps)):
+            if closes[i] is not None and opens[i] is not None:
+                candles.append({
+                    't': timestamps[i],
+                    'c': round(closes[i], 2),
+                    'o': round(opens[i],  2),
+                })
+        return candles
+    except Exception as e:
+        logger.error(f"Yahoo Finance error for {ticker} {range_str}: {str(e)}")
+        return []
+
+
 def get_candles_from_dynamo(table, ticker, range_str):
-    days_back = {'5D': 15, '1M': 45, '1Y': 400, '5Y': 1900}.get(range_str, 45)
-    max_points = {'5D': 5, '1M': 30, '1Y': 252, '5Y': 1260}.get(range_str, 30)
+    min_points = {'5D': 5, '1M': 20, '1Y': 200, '5Y': 200}.get(range_str, 20)
+    days_back  = {'5D': 15, '1M': 45, '1Y': 400, '5Y': 1900}.get(range_str, 45)
+    max_points = {'5D': 5, '1M': 30, '1Y': 252, '5Y': 260}.get(range_str, 30)
+
     cutoff = str(date.today() - timedelta(days=days_back))
     try:
         response = table.scan(
@@ -94,10 +128,17 @@ def get_candles_from_dynamo(table, ticker, range_str):
                 })
             except Exception:
                 pass
-        return candles[-max_points:] if len(candles) > max_points else candles
+        candles = candles[-max_points:] if len(candles) > max_points else candles
     except Exception as e:
         logger.error(f"DynamoDB candle error for {ticker} {range_str}: {str(e)}")
-        return []
+        candles = []
+
+    # Fall back to Yahoo Finance if not enough local data
+    if len(candles) < min_points:
+        logger.info(f"Only {len(candles)} points in DynamoDB for {ticker} {range_str}, fetching from Yahoo")
+        candles = fetch_yahoo_candles(ticker, range_str)
+
+    return candles
 
 def fetch_finnhub_candles(ticker, range_str, finnhub_key):
     now = int(datetime.utcnow().timestamp())
@@ -258,7 +299,7 @@ def lambda_handler(event, context):
             'momentum': momentum,
         })
 
-    # Date-specific data for watchlist table (e.g. ?date=2024-06-01). Checks cache first, then Massive if not found.
+    # Date-specific data for watchlist table (\date=2024-06-01). Checks cache first, then Massive if not found.
     requested_date = params.get('date')
     if requested_date:
         items = get_items_for_date(table, requested_date)
