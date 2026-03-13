@@ -59,7 +59,7 @@
     .stock-card:hover { border-color: #60a5fa; }
     .stock-card.top-mover { border-color: #f0b429; background: #1c2a1a; }
     .stock-card.top-mover::before {
-      content: 'HIGHEST CHANGE';
+      content: 'HIGHEST GAIN';
       position: absolute; top: 0; right: 0;
       background: #f0b429; color: #000;
       font-size: 0.55rem; font-weight: 800;
@@ -455,7 +455,13 @@
 
   function renderWatchlist(results) {
     const valid    = results.filter(Boolean);
-    const topMover = valid.length ? valid.reduce((a, b) => Math.abs(a.changePct) > Math.abs(b.changePct) ? a : b) : null;
+    const topMover = valid.length ? valid.reduce((best, curr) => {
+      const bp = best.changePct, cp = curr.changePct;
+      const isBetter = (cp > 0 && bp <= 0) ||
+                      (cp > 0 && bp > 0 && cp > bp) ||
+                      (cp <= 0 && bp <= 0 && cp > bp);
+      return isBetter ? curr : best;
+    }) : null;
 
     document.getElementById('watchlistGrid').innerHTML = results.map(r => {
       if (!r) return `<div class="stock-card"><div class="card-skeleton">No data</div></div>`;
