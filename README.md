@@ -41,7 +41,7 @@ An AWS application that tracks daily stock performance for `AAPL`, `MSFT`, `GOOG
 │                                                         │
 │  S3 (static frontend: index.html)                       │
 └─────────────────────────────────────────────────────────┘
----
+```
 
 ### Data Sources
  
@@ -51,6 +51,8 @@ An AWS application that tracks daily stock performance for `AAPL`, `MSFT`, `GOOG
 | **Finnhub** | Live quotes during market hours (free tier: `/quote` endpoint only) |
 | **Yahoo Finance** | Full chart history across all ranges (1D intraday through 5Y weekly) |
 
+---
+
 ## Design Decisions
  
 **Two Lambdas instead of one** — ingestion and retrieval are kept separate so the daily cron job is fully decoupled from frontend traffic. A failure or change in one doesn't affect the other.
@@ -59,6 +61,7 @@ An AWS application that tracks daily stock performance for `AAPL`, `MSFT`, `GOOG
  
 **Three data sources** — Finnhub's free tier doesn't include historical point data, only live quotes. Massive covers daily open and close price for date lookups but would be too slow for full chart history (one call per day per stock). Yahoo Finance returns a full range in a single call at no cost, making it the right fit for charting. Each source fills a gap the others don't cover for free.
  
+---
 
 ## Deploy
 
