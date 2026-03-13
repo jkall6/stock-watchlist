@@ -646,7 +646,8 @@
           saveLookupsToStorage(extras);
           renderHistory();
         }
-        record = selected || pickTopGain(movers.filter(m => m.date === dateStr));
+        const dateMovers = movers.filter(m => m.date === dateStr);
+        record = dateMovers.length ? pickTopGain(dateMovers) : null;
       } catch (err) {
         noData.textContent = `Error: ${err.message}`;
         return;
