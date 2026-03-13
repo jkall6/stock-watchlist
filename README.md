@@ -8,10 +8,10 @@ An AWS application that tracks daily stock performance for `AAPL`, `MSFT`, `GOOG
 
 ## Features
  
-- Five watchlist cards showing close price, % change, open, and close — updated live every 5 minutes during market hours via Finnhub
+- Five watchlist cards showing close price, % change, open, and close: updated live every 5 minutes during market hours via Finnhub
 - Gold badge on the card with the highest positive % gain each session
-- Daily winners history table — one row per trading day, sortable by any column, paginated 5 rows per page
-- Date picker to look up any past date — fetches from Massive if not already in the database, persists in the browser across refreshes
+- Daily winners history table: one row per trading day, sortable by any column, paginated 5 rows per page
+- Date picker to look up any past date: fetches from Massive if not already in the database, persists in the browser across refreshes
 - Stock detail modal with a price chart (Yahoo Finance), crosshair hover showing exact price and % from range start, range stats, and a plain-English short-term momentum signal
 - Fully automated deploys via GitHub Actions on every push to `main`
 
@@ -55,11 +55,11 @@ An AWS application that tracks daily stock performance for `AAPL`, `MSFT`, `GOOG
 
 ## Design Decisions
  
-**Two Lambdas instead of one** — ingestion and retrieval are kept separate so the daily cron job is fully decoupled from frontend traffic. A failure or change in one doesn't affect the other.
+**Two Lambdas instead of one**: ingestion and retrieval are kept separate so the daily cron job is fully decoupled from frontend traffic. A failure or change in one doesn't affect the other.
  
-**Composite DynamoDB key (date + ticker)** — allows efficient querying of all five tickers for a given date with a single `query` call rather than a scan. The ingestion Lambda always writes exactly five records per run.
+**Composite DynamoDB key (date + ticker)**: allows efficient querying of all five tickers for a given date with a single `query` call rather than a scan. The ingestion Lambda always writes exactly five records per run.
  
-**Three data sources** — Finnhub's free tier doesn't include historical point data, only live quotes. Massive covers daily open and close price for date lookups but would be too slow for full chart history (one call per day per stock). Yahoo Finance returns a full range in a single call at no cost, making it the right fit for charting. Each source fills a gap the others don't cover for free.
+**Three data sources**: Finnhub's free tier doesn't include historical point data, only live quotes. Massive covers daily open and close price for date lookups but would be too slow for full chart history (one call per day per stock). Yahoo Finance returns a full range in a single call at no cost, making it the right fit for charting. Each source fills a gap the others don't cover for free.
  
 ---
 
