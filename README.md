@@ -2,7 +2,7 @@
 
 An AWS application that tracks daily stock performance for `AAPL`, `MSFT`, `GOOGL`, `AMZN`, and `TSLA`. An EventBridge-scheduled Lambda fetches closing prices each weekday via the Massive API and stores all five stocks per date in DynamoDB. A second Lambda serves the data through API Gateway to a static frontend hosted on S3. During market hours, the frontend displays live quotes via Finnhub.
 
-**Live demo:** `YOUR_S3_URL_HERE`
+**Live demo:** (http://stock-watchlist-frontend-28aaae23.s3-website-us-east-1.amazonaws.com/)
 
 ---
 
